@@ -1,0 +1,16 @@
+{
+	"Name": {
+		"Family": "Adel",
+		"Personal": "Leda"
+	},
+	"Email": [
+		{
+			"Kind": "work",
+			"Address": "adel@work.com"
+		},
+		{
+			"Kind": "home",
+			"Address": "adel@home.com"
+		}
+	]
+}
