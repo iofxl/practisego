@@ -69,7 +69,7 @@ func handleConn(conn net.Conn) {
 		return
 	}
 
-	g := 国产.New国产器(cfg.M, cfg.Secret)
+	g := 国产.New国产器(cfg.M, []byte(cfg.Secret))
 	srvconn, err := 国产.Dial(g, "tcp", cfg.Server)
 
 	if err != nil {

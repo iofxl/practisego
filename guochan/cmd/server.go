@@ -18,7 +18,7 @@ var serverCmd = &cobra.Command{
 
 func ListenAndServeS(cmd *cobra.Command, args []string) {
 
-	g := 国产.New国产器(cfg.M, cfg.Secret)
+	g := 国产.New国产器(cfg.M, []byte(cfg.Secret))
 
 	log.Printf("Listen port: %v\n", cfg.Port)
 	l, err := 国产.Listen(g, "tcp4", ":"+strconv.Itoa(cfg.Port))
