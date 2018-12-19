@@ -71,6 +71,7 @@ func initConfig() {
 		cfg.Secret = string(b)
 		viper.Set("secret", cfg.Secret)
 	}
+
 	if viper.ConfigFileUsed() == "" {
 		log.Println("Since there is no configuration file, I will create one for you!")
 		err := viper.WriteConfigAs("Guochan.yaml")

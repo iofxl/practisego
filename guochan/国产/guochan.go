@@ -35,13 +35,15 @@ func Dial(g 国产器, network, address string) (net.Conn, error) {
 type Method uint
 
 const (
-	AES_128_CTR Method = 1 + iota
+	dummy Method = 1 + iota
+	AES_128_CTR
 	AES_192_CTR
 	AES_256_CTR
 	maxMethod
 )
 
 var keySizes = []uint8{
+	dummy:       0,
 	AES_128_CTR: 16,
 	AES_192_CTR: 24,
 	AES_256_CTR: 32,
