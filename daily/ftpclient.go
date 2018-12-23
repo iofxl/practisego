@@ -1,66 +1,96 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"log"
+	"net"
+	"os"
+	"strconv"
+	"sync"
 
 	"github.com/jlaffaye/ftp"
-	"github.com/spf13/cobra"
+	yaml "gopkg.in/yaml.v2"
 )
 
-var (
-	server, user, passwd string
-)
-
-func init() {
-	rootCmd.PersistentFlags().StringVar(&server, "server", "", "ftp server")
-	rootCmd.Flags().StringVar(&user, "user", "", "user")
-	rootCmd.Flags().StringVar(&passwd, "passwd", "", "user")
-	rootCmd.MarkPersistentFlagRequired("server")
-	rootCmd.MarkFlagRequired("user")
-	rootCmd.MarkFlagRequired("passwd")
+type work struct {
+	Des    string
+	Do     string
+	Host   string
+	Port   int
+	User   string
+	Pass   string
+	Local  string
+	Remote string
+	Backup string
 }
 
-var rootCmd = &cobra.Command{
-	Use: "",
-	Run: func(cmd *cobra.Command, args []string) {
-		serverconn, err := ftp.Dial(server)
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		err = serverconn.Login(user, passwd)
-
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		fmt.Println("Login succesfull")
-		pwd, err := serverconn.CurrentDir()
-
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		fmt.Println(pwd)
-
-		names, err := serverconn.NameList(pwd)
-
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		fmt.Println(names)
-
-	},
-}
-
-func Execute() {
-	if err := rootCmd.Execute(); err != nil {
-		log.Fatal(err)
-	}
-}
+var works []work
+var cfgFile string
 
 func main() {
-	Execute()
+	flag.StringVar(&cfgFile, "c", "Xzftp.yaml", "config file")
+	flag.Parse()
+
+	f, err := os.Open(cfgFile)
+	defer f.Close()
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	dec := yaml.NewDecoder(f)
+
+	err = dec.Decode(&works)
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for k, v := range works {
+		fmt.Println(k, v)
+	}
+	var wg sync.WaitGroup
+
+	for _, work := range works {
+		wg.Add(1)
+		go handlework(work, wg)
+
+	}
+
+	wg.Wait()
+	fmt.Println("done")
+
+}
+
+func handlework(w work, wg sync.WaitGroup) {
+	defer wg.Done()
+
+	addr := net.JoinHostPort(w.Host, strconv.Itoa(w.Port))
+	c, err := ftp.Dial(addr)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	err = c.Login(w.User, w.Pass)
+
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	fmt.Println("Login Successfull!")
+	entries, err := c.NameList(w.Remote)
+
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	for k, v := range entries {
+		fmt.Println(k, v)
+
+	}
+
 }
