@@ -8,7 +8,6 @@ import (
 	"log"
 	"net"
 	"os"
-	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -67,7 +66,7 @@ func handleWork(w work, wg sync.WaitGroup) {
 
 	fi, err := os.Stat(w.Local)
 
-	if !path.IsAbs(w.Local) || err != nil || !fi.IsDir() {
+	if !filepath.IsAbs(w.Local) || err != nil || !fi.IsDir() {
 		log.Printf(" %s Local dir error or %s is not a dir or is not an Abs path", w.Des, w.Local)
 		log.Fatal(err)
 	}
