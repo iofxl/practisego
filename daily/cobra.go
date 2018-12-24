@@ -29,9 +29,15 @@ var server string
 // func (c *Command) AddCommand(cmds ...*Command)
 func init() {
 	cobra.OnInitialize(initConfig)
+
 	rootCmd.AddCommand(serverCmd, clientCmd)
+
 	serverCmd.PersistentFlags().StringVarP(&addr, "listen", "l", "", "listen address")
+	serverCmd.MarkPersistentFlagRequired("listen")
+
 	clientCmd.Flags().StringVarP(&server, "server", "s", "", "server address")
+	clientCmd.MarkFlagRequired("server")
+
 }
 
 func initConfig() {
