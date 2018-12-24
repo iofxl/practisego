@@ -9,6 +9,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -30,6 +31,8 @@ type work struct {
 	Backup string
 	Prefix string
 	Suffix string
+	Regexp string
+	Enable bool
 }
 
 type works []work
@@ -52,9 +55,12 @@ func main() {
 	var wg sync.WaitGroup
 
 	for _, w := range ws {
-		wg.Add(1)
-		log.Printf("Begin handleWork %s\n", w.Des)
-		go handleWork(w, wg)
+
+		if w.Enable {
+			wg.Add(1)
+			log.Printf("Begin handleWork %s\n", w.Des)
+			go handleWork(w, wg)
+		}
 	}
 
 	wg.Wait()
@@ -64,24 +70,8 @@ func main() {
 func handleWork(w work, wg sync.WaitGroup) {
 	defer wg.Done()
 
-	fi, err := os.Stat(w.Local)
-
-	if !filepath.IsAbs(w.Local) || err != nil || !fi.IsDir() {
-		log.Printf(" %s Local dir error or %s is not a dir or is not an Abs path", w.Des, w.Local)
-		log.Fatal(err)
-	}
-
-	do := strings.ToLower(w.Do)
-
-	switch do {
+	switch w.Do {
 	case "upload":
-		fi, err := os.Stat(w.Backup)
-
-		if err != nil || !fi.IsDir() {
-			log.Printf(" %s Backup dir error or %s is not a dir", w.Des, w.Backup)
-			log.Fatal(err)
-		}
-
 		w.upload()
 	case "download":
 		w.download()
@@ -91,11 +81,14 @@ func handleWork(w work, wg sync.WaitGroup) {
 func (w work) download() {
 
 	c, ftperr := w.initFTP()
+
 	for ftperr != nil {
 		log.Println(w.Des, ftperr)
 		time.Sleep(1 * time.Minute)
 		c, ftperr = w.initFTP()
 	}
+
+	log.Printf("%s initFTP %s:%v Successful", w.Des, w.Host, w.Port)
 
 	for {
 
@@ -104,24 +97,22 @@ func (w work) download() {
 		for ftperr != nil || err != nil {
 			if ftperr != nil {
 				log.Println(w.Des, ftperr)
-				time.Sleep(1 * time.Minute)
-				c, ftperr = w.initFTP()
+				w.download()
 			}
+
 			if err != nil {
 				log.Println(w.Des, err)
 				time.Sleep(10 * time.Second)
 				entries, ftperr, err = w.getEntrynames(c)
 
 			}
-
 		}
 
 		for _, e := range entries {
 			ftperr, err := w.downloadEntry(c, e)
-			for ftperr != nil {
+			if ftperr != nil {
 				log.Println(w.Des, ftperr)
-				time.Sleep(1 * time.Minute)
-				c, ftperr = w.initFTP()
+				w.download()
 			}
 			if err != nil {
 				log.Println(w.Des, err)
@@ -149,16 +140,15 @@ func (w work) getEntrynames(c *ftp.ServerConn) ([]string, error, error) {
 	var entrynames []string
 	for _, e := range entries {
 
-		if !(e.Type == ftp.EntryTypeFolder) && !strings.HasPrefix(e.Name, w.Prefix) && !strings.HasSuffix(e.Name, w.Suffix) {
+		if e.Type == ftp.EntryTypeFile && e.Size != uint64(0) && w.validateFile(e.Name) {
 			entrynames = append(entrynames, e.Name)
 		}
 	}
 
 	if len(entrynames) == 0 {
-		return nil, nil, errors.New("Only tmp entry or dir left.")
+		return nil, nil, errors.New("No availble entries left.")
 	}
 
-	log.Printf("%s Find entries %v", w.Des, entrynames)
 	return entrynames, nil, nil
 
 }
@@ -206,6 +196,8 @@ func (w work) upload() {
 		c, ftperr = w.initFTP()
 	}
 
+	log.Printf("%s initFTP %s:%v Successful", w.Des, w.Host, w.Port)
+
 	for {
 
 		files, err := w.getFilenames()
@@ -219,10 +211,9 @@ func (w work) upload() {
 
 		for _, file := range files {
 			ftperr, err := w.uploadFile(c, filepath.Join(w.Local, file))
-			for ftperr != nil {
+			if ftperr != nil {
 				log.Println(w.Des, ftperr)
-				time.Sleep(1 * time.Minute)
-				c, ftperr = w.initFTP()
+				w.upload()
 			}
 			if err != nil {
 				log.Println(w.Des, err)
@@ -291,16 +282,15 @@ func (w work) getFilenames() ([]string, error) {
 
 	for _, fi := range fis {
 
-		if !fi.IsDir() && !strings.HasPrefix(fi.Name(), w.Prefix) && !strings.HasSuffix(fi.Name(), w.Suffix) {
+		if !fi.IsDir() && fi.Size() != int64(0) && w.validateFile(fi.Name()) {
 			files = append(files, fi.Name())
 		}
 	}
 
 	if len(files) == 0 {
-		return nil, errors.New("Only tmp file or dir left.")
+		return nil, errors.New("No availble files left.")
 	}
 
-	log.Printf("%s Find files %v", w.Des, files)
 	return files, nil
 }
 
@@ -320,23 +310,25 @@ func (w work) initFTP() (*ftp.ServerConn, error) {
 		return c, err
 	}
 
-	log.Printf("%s Login FTP %s:%v Successful", w.Des, w.Host, w.Port)
-
 	if w.Remote != "/" {
 
 		err = c.ChangeDir(w.Remote)
 		if err != nil {
 			return c, err
 		}
-		log.Printf("%s FTP ChangeDir to %s Successful", w.Des, w.Remote)
 	}
 
 	return c, err
 }
 
+func (w work) validateFile(filename string) bool {
+	re := regexp.MustCompile(w.Regexp)
+	return re.MatchString(filename) && !strings.HasPrefix(filename, w.Prefix) && !strings.HasSuffix(filename, w.Suffix)
+}
+
 func LoadConfig(cfgFile string) (works, error) {
 
-	var w works
+	var ws works
 
 	cfg, err := ioutil.ReadFile(cfgFile)
 
@@ -344,8 +336,46 @@ func LoadConfig(cfgFile string) (works, error) {
 		return nil, err
 	}
 
-	err = yaml.Unmarshal(cfg, &w)
+	err = yaml.Unmarshal(cfg, &ws)
 
-	return w, err
+	for _, w := range ws {
+
+		if w.Enable {
+
+			w.Do = strings.TrimSpace(strings.ToLower(w.Do))
+
+			fi, err := os.Stat(w.Local)
+
+			if err != nil {
+				log.Printf(" %s Stat %s ", w.Des, w.Local)
+				log.Fatal(err)
+			}
+
+			if !filepath.IsAbs(w.Local) {
+				log.Fatal(" %s %s need  an Abs path", w.Des, w.Local)
+			}
+
+			if !fi.IsDir() {
+				log.Fatal(" %s %s is not a dir", w.Des, w.Local)
+			}
+
+			if w.Do == "upload" {
+
+				fi, err := os.Stat(w.Backup)
+
+				if err != nil {
+					log.Fatal(" %s Stat %s ", w.Des, w.Local)
+					log.Fatal(err)
+				}
+
+				if !fi.IsDir() {
+					log.Printf(" %s  %s is not a dir", w.Des, w.Backup)
+					log.Fatal(err)
+				}
+			}
+		}
+	}
+
+	return ws, err
 
 }
