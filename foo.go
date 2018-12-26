@@ -1,39 +1,40 @@
 package main
 
 import (
-	"fmt"
-	"path"
-	"strings"
+	"log"
+	"net"
 )
 
 func main() {
 
-	a := "  "
-
-	b := " dir2/aa"
-
-	c := "dir3"
-
-	fmt.Println(Join(a, c, b))
-
-}
-
-func Join(elem ...string) string {
-
-	for i, e := range elem {
-
-		fmt.Println(elem)
-
-		fmt.Println(i, e)
-
-		if e != "" {
-
-			return path.Clean(strings.Join(elem[i:], "/"))
-
-		}
-
+	l, err := net.Listen("tcp", ":12345")
+	if err != nil {
+		log.Fatal(err)
 	}
 
-	return ""
+	for {
+		conn, err := l.Accept()
 
+		if err != nil {
+			log.Print(err)
+			return
+		}
+
+		go handleConn(conn)
+
+	}
+}
+
+func handleConn(conn net.Conn) {
+	for {
+		b := conn.readByte()
+		switch b {
+		case msg1:
+			print(1)
+		case msg2:
+			print(2)
+		case msg3:
+			print(3)
+		}
+	}
 }
