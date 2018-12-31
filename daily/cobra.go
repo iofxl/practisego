@@ -9,6 +9,13 @@ import (
 
 var rootCmd = &cobra.Command{}
 
+var serverCmd = &cobra.Command{
+	Use: "server",
+	Run: func(cmd *cobra.Command, args []string) {
+		fmt.Println(listen)
+	},
+}
+
 var clientCmd = &cobra.Command{
 	Use: "client",
 	Run: func(cmd *cobra.Command, args []string) {
@@ -16,26 +23,18 @@ var clientCmd = &cobra.Command{
 	},
 }
 
-var serverCmd = &cobra.Command{
-	Use: "server",
-	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println(addr)
-	},
-}
-
-var addr string
 var server string
+var listen string
 
-// func (c *Command) AddCommand(cmds ...*Command)
 func init() {
 	cobra.OnInitialize(initConfig)
 
 	rootCmd.AddCommand(serverCmd, clientCmd)
 
-	serverCmd.PersistentFlags().StringVarP(&addr, "listen", "l", "", "listen address")
+	serverCmd.PersistentFlags().StringVarP(&listen, "listen", "l", ":12345", "listen address")
 	serverCmd.MarkPersistentFlagRequired("listen")
 
-	clientCmd.Flags().StringVarP(&server, "server", "s", "", "server address")
+	clientCmd.Flags().StringVarP(&server, "server", "s", ":12345", "server address")
 	clientCmd.MarkFlagRequired("server")
 
 }
