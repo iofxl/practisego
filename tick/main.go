@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"log"
 	"os/exec"
@@ -17,6 +18,15 @@ var (
 
 func main() {
 
+	var idle float64
+
+	flag.Float64Var(&idle, "c", 80, "cpu idle:10 - 90")
+	flag.Parse()
+
+	if idle < 10 || idle > 90 {
+		log.Fatalln("cpu idle must idle >= 10 && idle <= 90")
+	}
+
 	ticker := time.NewTicker(2 * time.Second)
 
 	t := new(tickers)
@@ -25,7 +35,7 @@ func main() {
 
 		t.cpuidle()
 		fmt.Println("idle: ", t.idle)
-		if t.idle > 80 {
+		if t.idle > idle {
 			t.push()
 		} else {
 			t.pop()
