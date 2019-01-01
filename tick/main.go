@@ -85,6 +85,7 @@ func (t *tickers) pop() {
 func tick(stop chan struct{}) {
 	go func() {
 		t := time.NewTicker(time.Millisecond)
+		defer t.Stop()
 		for range t.C {
 			select {
 			case <-stop:
