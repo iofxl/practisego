@@ -2,33 +2,35 @@ package main
 
 import (
 	"fmt"
+	"log"
+	"os/exec"
+	"regexp"
 	"runtime"
+	"strconv"
 	"time"
+)
+
+var (
+	sarRe  = regexp.MustCompile(`Average:.*`)
+	idleRe = regexp.MustCompile(`\d+\.\d+`)
 )
 
 func main() {
 
-	n := 4.5
+	ticker := time.NewTicker(2 * time.Second)
 
-	var stack []chan struct{}
+	t := new(tickers)
 
-	t := time.NewTicker(2 * time.Second)
+	for range ticker.C {
 
-	for range t.C {
-
-		fmt.Println("Goroutine before: ", runtime.NumGoroutine())
-
-		if n < 5 {
-			n += 1
-			stack = append(stack, add())
-			fmt.Println("Goroutine after append: ", runtime.NumGoroutine())
+		t.cpuidle()
+		fmt.Println("idle: ", t.idle)
+		if t.idle > 80 {
+			t.push()
 		} else {
-			n -= 1
-			close(stack[len(stack)-1])
-			stack = stack[:len(stack)-1]
-			fmt.Println("Goroutine after drop: ", runtime.NumGoroutine())
+			t.pop()
 		}
-		fmt.Println("Goroutine after: ", runtime.NumGoroutine())
+		fmt.Println("tickers: ", runtime.NumGoroutine())
 	}
 
 }
@@ -38,12 +40,46 @@ type tickers struct {
 	idle float64
 }
 
-func add() chan struct{} {
+func (t *tickers) cpuidle() {
+
+	out, err := exec.Command("sar", "-u", "2", "2").CombinedOutput()
+	if err != nil {
+		t.idle = 0
+		log.Println(out, err)
+		return
+	}
+
+	m := idleRe.FindAll(sarRe.Find(out), -1)
+	f, err := strconv.ParseFloat(string(m[5]), 64)
+
+	if err != nil {
+		t.idle = 0
+		log.Println(err)
+		return
+	}
+
+	t.idle = f
+}
+
+func (t *tickers) push() {
 	stop := make(chan struct{})
-	go func() {
+	n := 16
+	if runtime.NumCPU() > 16 {
+		n = runtime.NumCPU()
+	}
+	for i := 0; i < n; i++ {
 		go tick(stop)
-	}()
-	return stop
+	}
+	t.ch = append(t.ch, stop)
+}
+
+func (t *tickers) pop() {
+	l := len(t.ch)
+	if l < 1 {
+		return
+	}
+	close(t.ch[l-1])
+	t.ch = t.ch[:l-1]
 }
 
 func tick(stop chan struct{}) {
