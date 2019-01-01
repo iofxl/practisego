@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/textproto"
 	"os/exec"
+	"regexp"
 	"strings"
 )
 
@@ -34,6 +35,10 @@ func main() {
 	}
 
 }
+
+var (
+	mailFromRE = regexp.MustCompile(`[Ff][Rr][Oo][Mm]:<(.*)>`)
+)
 
 type Client struct {
 	Text       *textproto.Conn
@@ -339,6 +344,8 @@ func (ss *Session) Serve() {
 
 		case "HELO", "EHLO":
 			ss.handleHELO(cmd, args)
+		case "MAIL":
+			ss.handleMAIL(args)
 		case "QUIT":
 			ss.handleQUIT()
 			return
