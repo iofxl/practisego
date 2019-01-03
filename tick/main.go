@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"os/exec"
 	"regexp"
@@ -12,8 +13,10 @@ import (
 )
 
 var (
-	sarRe  = regexp.MustCompile(`Average:.*`)
-	idleRe = regexp.MustCompile(`\d+\.\d+`)
+	sarRe   = regexp.MustCompile(`Average:.*`)
+	idleRe  = regexp.MustCompile(`\d+\.\d+`)
+	totalRe = regexp.MustCompile(`MemTotal:\s+(\d+)`)
+	freeRe  = regexp.MustCompile(`MemFree:\s+(\d+)`)
 )
 
 func main() {
@@ -31,6 +34,26 @@ func main() {
 
 	t := new(tickers)
 
+	m := new(mem)
+
+	memTotal, err := getMemTotal()
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	go func() {
+		for range ticker.C {
+			m.getMemFree()
+			fmt.Println("free: ", m.free)
+			if m.free/memTotal > 0.5 {
+				m.allocate()
+			} else {
+				m.freemem()
+			}
+		}
+	}()
+
 	for range ticker.C {
 
 		t.cpuidle()
@@ -45,9 +68,80 @@ func main() {
 
 }
 
+func getMemTotal() (float64, error) {
+
+	data, err := ioutil.ReadFile("/proc/meminfo")
+
+	if err != nil {
+		return 0, err
+	}
+
+	total := totalRe.FindSubmatch(data)[1]
+	totalf, err := strconv.ParseFloat(string(total), 64)
+
+	if err != nil {
+		return 0, err
+	}
+
+	return totalf, nil
+
+}
+
 type tickers struct {
 	ch   []chan struct{}
 	idle float64
+}
+
+type mem struct {
+	bufs []*[]byte
+	free float64
+}
+
+func (m *mem) getMemFree() {
+	data, err := ioutil.ReadFile("/proc/meminfo")
+
+	if err != nil {
+		m.free = 0
+		log.Println(err)
+		return
+	}
+
+	free := freeRe.FindSubmatch(data)[1]
+	freef, err := strconv.ParseFloat(string(free), 64)
+
+	if err != nil {
+		m.free = 0
+		log.Println(err)
+		return
+	}
+
+	m.free = freef
+
+}
+
+func (m *mem) allocate() {
+	if m.free == 0 {
+		return
+	}
+	b := make([]byte, int(m.free)*300)
+	for k, _ := range b {
+		b[k] = '0'
+	}
+
+	m.bufs = append(m.bufs, &b)
+}
+
+func (m *mem) freemem() {
+	l := len(m.bufs)
+
+	if l == 0 {
+		return
+	}
+
+	c := m.bufs[l-1]
+	*c = nil
+	c = nil
+	m.bufs = m.bufs[:l-1]
 }
 
 func (t *tickers) cpuidle() {
@@ -74,8 +168,8 @@ func (t *tickers) cpuidle() {
 func (t *tickers) push() {
 	stop := make(chan struct{})
 	n := 16
-	if runtime.NumCPU() > 16 {
-		n = runtime.NumCPU()
+	if numcpu := runtime.NumCPU(); numcpu > 16 {
+		n = numcpu
 	}
 	for i := 0; i < n; i++ {
 		go tick(stop)
