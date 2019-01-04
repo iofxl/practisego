@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"regexp"
 	"runtime"
+	"runtime/debug"
 	"strconv"
 	"time"
 )
@@ -30,26 +31,28 @@ func main() {
 		log.Fatalln("cpu idle must idle >= 10 && idle <= 90")
 	}
 
-	ticker := time.NewTicker(2 * time.Second)
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+
+	mticker := time.NewTicker(5 * time.Second)
+	defer mticker.Stop()
 
 	t := new(tickers)
 
-	m := new(mem)
-
-	memTotal, err := getMemTotal()
-
-	if err != nil {
-		log.Fatal(err)
-	}
-
 	go func() {
-		for range ticker.C {
-			m.getMemFree()
-			fmt.Println("free: ", m.free)
-			if m.free/memTotal > 0.5 {
-				m.allocate()
+		var m mem
+		for range mticker.C {
+			t, f, err := getMemStats()
+			if err != nil {
+				log.Println(err)
+				return
+			}
+
+			fmt.Println("free: ", f)
+			if f/t > 0.5 {
+				m.add(int(f/5) * 1000)
 			} else {
-				m.freemem()
+				m.free()
 			}
 		}
 	}()
@@ -68,80 +71,65 @@ func main() {
 
 }
 
-func getMemTotal() (float64, error) {
-
-	data, err := ioutil.ReadFile("/proc/meminfo")
-
-	if err != nil {
-		return 0, err
-	}
-
-	total := totalRe.FindSubmatch(data)[1]
-	totalf, err := strconv.ParseFloat(string(total), 64)
-
-	if err != nil {
-		return 0, err
-	}
-
-	return totalf, nil
-
-}
-
 type tickers struct {
 	ch   []chan struct{}
 	idle float64
 }
 
-type mem struct {
-	bufs []*[]byte
-	free float64
-}
-
-func (m *mem) getMemFree() {
+func getMemStats() (float64, float64, error) {
 	data, err := ioutil.ReadFile("/proc/meminfo")
 
 	if err != nil {
-		m.free = 0
-		log.Println(err)
-		return
+		return 0, 0, err
 	}
 
 	free := freeRe.FindSubmatch(data)[1]
 	freef, err := strconv.ParseFloat(string(free), 64)
 
 	if err != nil {
-		m.free = 0
-		log.Println(err)
-		return
+		return 0, 0, err
 	}
 
-	m.free = freef
+	total := totalRe.FindSubmatch(data)[1]
+	totalf, err := strconv.ParseFloat(string(total), 64)
+
+	if err != nil {
+		return 0, 0, err
+	}
+
+	return totalf, freef, nil
 
 }
 
-func (m *mem) allocate() {
-	if m.free == 0 {
-		return
-	}
-	b := make([]byte, int(m.free)*300)
+type mem [][]byte
+
+func allocate(n int) []byte {
+	b := make([]byte, n)
 	for k, _ := range b {
 		b[k] = '0'
 	}
 
-	m.bufs = append(m.bufs, &b)
+	return b
+
 }
 
-func (m *mem) freemem() {
-	l := len(m.bufs)
+func (m *mem) add(n int) {
+
+	*m = append(*m, allocate(n))
+
+}
+
+func (m *mem) free() {
+
+	l := len(*m)
 
 	if l == 0 {
 		return
 	}
 
-	c := m.bufs[l-1]
-	*c = nil
-	c = nil
-	m.bufs = m.bufs[:l-1]
+	(*m)[l-1] = nil
+	(*m) = (*m)[:l-1]
+	debug.FreeOSMemory()
 }
 
 func (t *tickers) cpuidle() {
