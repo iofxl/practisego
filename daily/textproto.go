@@ -8,6 +8,7 @@ import (
 	"log"
 	"net"
 	"net/textproto"
+	"os"
 	"os/exec"
 	"regexp"
 	"strings"
@@ -226,10 +227,11 @@ func clientFunc(host string) error {
 		return err
 	}
 
-	for {
+	scanner := bufio.NewScanner(os.Stdin)
 
-		var line string
-		fmt.Scanln(&line)
+	for scanner.Scan() {
+
+		line := scanner.Text()
 
 		cmd, args := parseLine(line)
 
@@ -260,6 +262,7 @@ func clientFunc(host string) error {
 		}
 	}
 
+	return scanner.Err()
 }
 
 // server
