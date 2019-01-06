@@ -49,7 +49,10 @@ func (m *mem) freeAll() {
 		return
 	}
 
-	m.bufs = nil
+	for i := 0; i < l; i++ {
+		m.bufs[i] = nil
+	}
+	m.bufs = m.bufs[:0]
 	debug.FreeOSMemory()
 }
 
