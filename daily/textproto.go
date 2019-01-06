@@ -163,6 +163,11 @@ func (c *Client) Hello(localName string) error {
 	return c.hello()
 }
 
+func (c *Client) handleDefault(cmd, args string) error {
+	_, _, err := c.cmd(250, cmd, args)
+	return err
+}
+
 func (c *Client) hello() error {
 
 	if !c.didHello {
@@ -224,9 +229,11 @@ func clientFunc(host string) error {
 	for {
 
 		var line string
-		fmt.Scanf("%s\n", &line)
+		fmt.Scanln(&line)
 
 		cmd, args := parseLine(line)
+
+		fmt.Println("line: ", line, "\ncmd: ", cmd, "args: ", args)
 
 		switch cmd {
 		case "HELO", "EHLO", "HELLO":
@@ -245,6 +252,11 @@ func clientFunc(host string) error {
 				return err
 			}
 			return nil
+		default:
+
+			if err := c.handleDefault(cmd, args); err != nil {
+				log.Println(err)
+			}
 		}
 	}
 
@@ -255,6 +267,34 @@ func clientFunc(host string) error {
 type Server struct {
 	Addr     string
 	Hostname string
+}
+
+type MailAddr interface {
+	Host() string   // canonical hostname, lowercase
+	String() string // email address, as provided
+}
+
+type mailAddr string
+
+func (m mailAddr) String() string {
+	return string(m)
+}
+
+func (m mailAddr) Host() string {
+
+	s := m.String()
+
+	if idx := strings.Index(s, "@"); idx != -1 {
+		return strings.ToLower(s[idx+1:])
+	}
+	return ""
+}
+
+type Envelope interface {
+	AddRecipient(rcpt MailAddr) error
+	BeginData() error
+	Write(line []byte) error
+	Close() error
 }
 
 func ListenAndServe(addr string) error {
@@ -312,6 +352,8 @@ type Session struct {
 	textr *textproto.Reader
 	textw *textproto.Writer
 
+	env Envelope // current envelope, or nil
+
 	helloType string
 	helloHost string
 }
@@ -324,6 +366,10 @@ func (s *Server) newSession(conn net.Conn) *Session {
 		textw: textproto.NewWriter(bufio.NewWriter(conn)),
 	}
 	return ss
+}
+
+func (ss *Session) Close() error {
+	return ss.conn.Close()
 }
 
 func (ss *Session) Serve() {
@@ -340,6 +386,8 @@ func (ss *Session) Serve() {
 
 		cmd, args := parseLine(line)
 
+		fmt.Println("line: ", line, "\ncmd: ", cmd, "args: ", args)
+
 		switch cmd {
 
 		case "HELO", "EHLO":
@@ -350,7 +398,7 @@ func (ss *Session) Serve() {
 			ss.handleQUIT()
 			return
 		default:
-			ss.handleDefault()
+			ss.handleDefault(cmd, args)
 		}
 
 	}
@@ -385,10 +433,25 @@ func (ss *Session) handleHELO(cmd, args string) {
 
 }
 
+func (ss *Session) handleMAIL(args string) {
+	m := mailFromRE.FindStringSubmatch(args)
+
+	if m == nil {
+		log.Printf("invalid MAIL arg: %q", args)
+		ss.textw.PrintfLine("501 5.1.7 Bad sender address syntax")
+		return
+	}
+
+	log.Printf("new mail from %q", m[1])
+	ss.textw.PrintfLine("250 2.1.0 Ok")
+
+}
+
 func (ss *Session) handleQUIT() {
 	ss.textw.PrintfLine("221 Bye")
 }
 
-func (ss *Session) handleDefault() {
+func (ss *Session) handleDefault(cmd, args string) {
+	log.Printf("Client: %q, Args: %q", cmd, args)
 	ss.textw.PrintfLine("502 5.5.2 Error: command not recognized")
 }

@@ -24,9 +24,7 @@ func main() {
 		log.Fatalln("mem used must <= 80")
 	}
 
-	numcpu := runtime.NumCPU()
-
-	t := &ticker{nil, make(chan float64), cputime, numcpu}
+	t := &ticker{nil, make(chan float64), cputime, runtime.NumCPU()}
 	go t.run()
 
 	r := &mem{nil, make(chan float64), 0, memused, os.Getpagesize()}
