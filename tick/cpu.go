@@ -96,7 +96,7 @@ func (t *ticker) run() {
 			continue
 		}
 
-		if 100-v >= float64(t.want+20) {
+		if 100-v >= float64(t.want+10) {
 			t.clear()
 			time.Sleep(5 * time.Minute)
 		}

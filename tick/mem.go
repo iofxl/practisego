@@ -82,7 +82,7 @@ func (m *mem) run() {
 			continue
 		}
 
-		if v >= float64(m.want)+20 {
+		if v >= float64(m.want)+10 {
 			m.freeAll()
 			time.Sleep(5 * time.Minute)
 		}
