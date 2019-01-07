@@ -2,9 +2,11 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/textproto"
@@ -39,6 +41,7 @@ func main() {
 
 var (
 	mailFromRE = regexp.MustCompile(`[Ff][Rr][Oo][Mm]:<(.*)>`)
+	rcptToRE   = regexp.MustCompile(`[Tt][Oo]:<(.+)>`)
 )
 
 type Client struct {
@@ -164,11 +167,6 @@ func (c *Client) Hello(localName string) error {
 	return c.hello()
 }
 
-func (c *Client) handleDefault(cmd, args string) error {
-	_, _, err := c.cmd(250, cmd, args)
-	return err
-}
-
 func (c *Client) hello() error {
 
 	if !c.didHello {
@@ -213,6 +211,57 @@ func (c *Client) Mail(from string) error {
 	return err
 }
 
+func (c *Client) Reset() error {
+	if err := c.hello(); err != nil {
+		return err
+	}
+	_, _, err := c.cmd(250, "RSET")
+	return err
+}
+
+func (c *Client) Noop() error {
+	if err := c.hello(); err != nil {
+		return err
+	}
+	_, _, err := c.cmd(250, "NOOP")
+	return err
+}
+
+func (c *Client) handleDefault(cmd, args string) error {
+	_, _, err := c.cmd(250, cmd, args)
+	return err
+}
+
+func (c *Client) Rcpt(to string) error {
+	if err := validateLine(to); err != nil {
+		return err
+	}
+
+	_, _, err := c.cmd(25, "RCPT TO:<%s>", to)
+	return err
+}
+
+type dataCloser struct {
+	c *Client
+	io.WriteCloser
+}
+
+func (d *dataCloser) Close() error {
+	d.WriteCloser.Close()
+	_, _, err := d.c.Text.ReadResponse(250)
+	return err
+}
+
+func (c *Client) Data() (io.WriteCloser, error) {
+	_, _, err := c.cmd(354, "DATA")
+	if err != nil {
+		return nil, err
+	}
+
+	return &dataCloser{c, c.Text.DotWriter()}, nil
+
+}
+
 func validateLine(line string) error {
 	if strings.ContainsAny(line, "\r\n") {
 		return errors.New("smtp: A line must not contain CR or LF")
@@ -242,20 +291,48 @@ func clientFunc(host string) error {
 			if err := c.Hello(args); err != nil {
 				log.Println(err)
 			}
+		case "NOOP":
+			if err := c.Noop(); err != nil {
+				log.Println(err)
+			}
+		case "RESET":
+			if err := c.Reset(); err != nil {
+				log.Println(err)
+			}
 		case "MAIL":
 			if err := c.Mail(args); err != nil {
 				log.Print(err)
 				return err
 			}
-
-		case "QUIT":
-			if err := c.Quit(); err != nil {
-				log.Println(err)
+		case "RCPT":
+			if err := c.Rcpt(args); err != nil {
+				log.Print(err)
 				return err
 			}
-			return nil
-		default:
+		case "DATA":
+			w, err := c.Data()
+			if err != nil {
+				log.Print(err)
+				return err
+			}
 
+			msg := []byte("To: recipient@example.net\r\n" +
+				"Subject: discount Gophers!\r\n" +
+				"\r\n" +
+				"This is the email body.\r\n")
+			_, err = w.Write(msg)
+			if err != nil {
+				return err
+			}
+			err = w.Close()
+			if err != nil {
+				return err
+			}
+			return c.Quit()
+		case "QUIT":
+			return c.Quit()
+		case "SENDMAIL":
+		default:
 			if err := c.handleDefault(cmd, args); err != nil {
 				log.Println(err)
 			}
@@ -294,10 +371,15 @@ func (m mailAddr) Host() string {
 }
 
 type Envelope interface {
-	AddRecipient(rcpt MailAddr) error
-	BeginData() error
-	Write(line []byte) error
-	Close() error
+	AddRcpt(rcpt MailAddr)
+}
+
+type BasicEnvelope struct {
+	rcpts []MailAddr
+}
+
+func (e *BasicEnvelope) AddRcpt(rcpt MailAddr) {
+	e.rcpts = append(e.rcpts, rcpt)
 }
 
 func ListenAndServe(addr string) error {
@@ -357,6 +439,7 @@ type Session struct {
 
 	env Envelope // current envelope, or nil
 
+	onMail    bool
 	helloType string
 	helloHost string
 }
@@ -395,11 +478,21 @@ func (ss *Session) Serve() {
 
 		case "HELO", "EHLO":
 			ss.handleHELO(cmd, args)
+		case "NOOP":
+			ss.textw.PrintfLine("250 2.0.0 OK")
+		case "RSET":
+			ss.env = nil
+			ss.textw.PrintfLine("250 2.0.0 OK")
 		case "MAIL":
 			ss.handleMAIL(args)
+		case "RCPT":
+			ss.handleRCPT(args)
+		case "DATA":
+			ss.handleDATA()
 		case "QUIT":
 			ss.handleQUIT()
 			return
+		case "SENDMAIL":
 		default:
 			ss.handleDefault(cmd, args)
 		}
@@ -446,7 +539,52 @@ func (ss *Session) handleMAIL(args string) {
 	}
 
 	log.Printf("new mail from %q", m[1])
+	ss.onMail = true
+	ss.env = &BasicEnvelope{}
 	ss.textw.PrintfLine("250 2.1.0 Ok")
+
+}
+
+func (ss *Session) handleRCPT(args string) {
+
+	r := rcptToRE.FindStringSubmatch(args)
+
+	if !ss.onMail {
+		ss.textw.PrintfLine("503 5.5.1 Error: need MAIL command")
+		return
+	}
+
+	if r == nil {
+		log.Printf("bad RCPT address: %q", args)
+		ss.textw.PrintfLine("501 5.1.7 Bad sender address syntax")
+		return
+	}
+
+	ss.env.AddRcpt(mailAddr(r[1]))
+	ss.textw.PrintfLine("250 2.1.0 Ok")
+}
+
+func (ss *Session) handleDATA() {
+	if ss.env == nil {
+		ss.textw.PrintfLine("503 5.5.1 Error: need RCPT command")
+		return
+	}
+
+	ss.textw.PrintfLine("354 Go ahead")
+
+	d := ss.textr.DotReader()
+
+	buf := &bytes.Buffer{}
+
+	_, err := buf.ReadFrom(d)
+
+	if err != nil {
+		ss.textw.PrintfLine("550 ??? failed")
+		return
+	}
+	fmt.Println(buf.String())
+	ss.env = nil
+	ss.textw.PrintfLine("250 2.0.0 Ok: queued")
 
 }
 
