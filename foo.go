@@ -1,40 +1,59 @@
 package main
 
 import (
+	"flag"
 	"log"
-	"net"
+	"net/textproto"
+	"os"
+	"time"
+
+	"github.com/ziutek/telnet"
 )
+
+type conn struct {
+	*telnet.Conn
+}
 
 func main() {
 
-	l, err := net.Listen("tcp", ":12345")
+	var addr string
+	flag.StringVar(&addr, "s", "", "server")
+	flag.Parse()
+
+	t, err := telnet.DialTimeout("tcp", addr, 2*time.Second)
+
 	if err != nil {
 		log.Fatal(err)
 	}
 
+	c := &conn{t}
+
+	c.cmd("#", "sh running-config")
+
+	buf := make([]byte, 512)
+
 	for {
-		conn, err := l.Accept()
+
+		n, err := t.Read(buf)
+
+		os.Stdout.Write(buf[:n])
 
 		if err != nil {
-			log.Print(err)
-			return
+			log.Fatal(err)
 		}
 
-		go handleConn(conn)
-
 	}
+
 }
 
-func handleConn(conn net.Conn) {
-	for {
-		b := conn.readByte()
-		switch b {
-		case msg1:
-			print(1)
-		case msg2:
-			print(2)
-		case msg3:
-			print(3)
-		}
+func (c conn) cmd(expect, format string, args ...interface{}) error {
+
+	err := c.SkipUntil(expect)
+
+	if err != nil {
+		return err
 	}
+
+	text := textproto.NewConn(c)
+	return text.PrintfLine(format, args...)
 }
