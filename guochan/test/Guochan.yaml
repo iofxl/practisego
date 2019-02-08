@@ -1,7 +1,0 @@
-listen: 443
-method: "1"
-secret: !!binary |
-  mx9JIz/cgX1O0uKvasrOvg1OCtc1w8SdpNAMlZnbN6Naa0JqI8rBCAh1g7f+s6rBgL/MJO
-  YR8CQFc7ewxmySIqhVc+KHjChiClniQJEe/3uPbVPJG+inga6OCWFuTmX6em+s/yWGdEng
-  z8u/fMapy4MxDGl9gnBvCaHdH/UYff0=
-server: 127.0.0.1:443
