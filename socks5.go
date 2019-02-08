@@ -27,13 +27,12 @@ type Addr struct {
 
 func main() {
 
-	var network, address string
+	var address string
 
-	flag.StringVar(&network, "n", "tcp", "network")
 	flag.StringVar(&address, "l", ":12345", "address")
 	flag.Parse()
 
-	l, err := net.Listen(network, address)
+	l, err := net.Listen("tcp", address)
 
 	if err != nil {
 		log.Fatal(err)
