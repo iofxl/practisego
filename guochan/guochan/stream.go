@@ -2,6 +2,7 @@ package guochan
 
 import (
 	"crypto/cipher"
+	"errors"
 	"net"
 )
 
@@ -96,6 +97,9 @@ func NewStreamConn(c net.Conn, blk cipher.Block) (net.Conn, error) {
 
 	if err != nil {
 		return nil, err
+	}
+	if n != blk.BlockSize() {
+		return nil, errors.New("iv size error")
 	}
 
 	ctr = cipher.NewCTR(blk, iv[:n])
