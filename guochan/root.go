@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/rand"
 	"log"
+	"os"
 	"strconv"
 
 	"github.com/spf13/cobra"
@@ -21,6 +22,8 @@ var cfg Config
 
 var cfgFile string
 var serverString string
+
+var logger = log.New(os.Stdout, "", log.LstdFlags|log.Lshortfile)
 
 func init() {
 	cobra.OnInitialize(initConfig)
@@ -56,12 +59,12 @@ func initConfig() {
 	}
 
 	if err := viper.ReadInConfig(); err != nil {
-		log.Println("ReadInConfig Error:", err)
+		logger.Println("ReadInConfig Error:", err)
 	}
 
 	err := viper.Unmarshal(&cfg)
 	if err != nil {
-		log.Println("Unmarshal:", err)
+		logger.Println("Unmarshal:", err)
 	}
 
 	if cfg.Secret == "" {
@@ -72,14 +75,14 @@ func initConfig() {
 	}
 
 	if viper.ConfigFileUsed() == "" {
-		log.Println("Since there is no configuration file, I will create one for you!")
+		logger.Println("Since there is no configuration file, I will create one for you!")
 		err := viper.WriteConfigAs("Guochan.yaml")
 		if err != nil {
-			log.Println("WriteConfigAs:", err)
+			logger.Println("WriteConfigAs:", err)
 		}
-		log.Println("WriteConfigAs Guochan.yaml done")
+		logger.Println("WriteConfigAs Guochan.yaml done")
 	} else {
-		log.Println("ConfigFileUsed:", viper.ConfigFileUsed())
+		logger.Println("ConfigFileUsed:", viper.ConfigFileUsed())
 	}
 }
 
@@ -88,10 +91,11 @@ var rootCmd = &cobra.Command{Use: "guochan"}
 var serverCmd = &cobra.Command{
 	Use: "server",
 	Run: func(cmd *cobra.Command, args []string) {
-		log.Printf("Listen: %v\n", cfg.Listen)
+		logger.Printf("Listen: %v\n", cfg.Listen)
+
 		addr := ":" + strconv.Itoa(cfg.Listen)
-		if err := ListenAndServeSS(addr, cfg); err != nil {
-			log.Fatal(err)
+		if err := ListenAndServeSS(addr, cfg, logger); err != nil {
+			logger.Fatal(err)
 		}
 	},
 }
@@ -100,11 +104,11 @@ var clientCmd = &cobra.Command{
 	Use: "client",
 	Run: func(cmd *cobra.Command, args []string) {
 
-		log.Printf("Listen: %v\n", cfg.Listen)
-		log.Printf("Server: %v\n", cfg.Server)
+		logger.Printf("Listen: %v\n", cfg.Listen)
+		logger.Printf("Server: %v\n", cfg.Server)
 		addr := ":" + strconv.Itoa(cfg.Listen)
-		if err := ListenAndServe(addr, cfg); err != nil {
-			log.Fatal(err)
+		if err := ListenAndServe(addr, cfg, logger); err != nil {
+			logger.Fatal(err)
 		}
 	},
 }
@@ -112,6 +116,6 @@ var clientCmd = &cobra.Command{
 // Execute is Execute
 func Execute() {
 	if err := rootCmd.Execute(); err != nil {
-		log.Fatal(err)
+		logger.Fatal(err)
 	}
 }

@@ -16,6 +16,7 @@ import (
 	"net"
 	"strconv"
 	"sync"
+	"time"
 
 	"practisego/guochan/guochan"
 )
@@ -87,7 +88,7 @@ const (
 
 var (
 	// ErrVersion is ErrVersion
-	ErrVersion = errors.New("guochan: only support socks5")
+	ErrVersion = errors.New("guochan: version error")
 	// ErrCmdNotSupported is ErrCmdNotSupported
 	ErrCmdNotSupported = errors.New("guochan: command not supported")
 	// ErrATYPNotSupported is ErrATYPNotSupported
@@ -122,6 +123,7 @@ type Socks5Server struct {
 	Hostname string
 	cfg      Config
 	g        guochan.G国产器
+	logger   *log.Logger
 }
 
 // Serve is Serve
@@ -136,7 +138,6 @@ func (s *Socks5Server) Serve(l net.Listener) error {
 		}
 
 		ss := s.newSession(c)
-
 		go ss.Serve()
 
 	}
@@ -159,11 +160,11 @@ func (s *Socks5Server) ListenAndServe() error {
 }
 
 // ListenAndServe is ListenAndServe
-func ListenAndServe(addr string, cfg Config) error {
+func ListenAndServe(addr string, cfg Config, logger *log.Logger) error {
 
 	g := guochan.New国产器(guochan.Method(cfg.Method), []byte(cfg.Secret))
 
-	s := &Socks5Server{Addr: addr, cfg: cfg, g: g}
+	s := &Socks5Server{Addr: addr, cfg: cfg, g: g, logger: logger}
 
 	return s.ListenAndServe()
 }
@@ -182,29 +183,33 @@ func (s *Socks5Server) newSession(conn net.Conn) *Session {
 }
 
 // Serve is ...
-func (ss *Session) Serve() error {
+func (ss *Session) Serve() {
 	defer ss.Close()
 
 	err := ss.Negotiate()
 	if err != nil {
-		return err
+		ss.s.logger.Println(err)
+		return
 	}
 
 	// read version
 	ver, err := ss.ReadByte()
 	if err != nil {
-		return err
+		ss.s.logger.Println(err)
+		return
 	}
 
 	if ver != Version5 {
-		return ErrVersion
+		ss.s.logger.Println(ErrVersion)
+		return
 	}
 
 	// read CMD
 	cmd, err := ss.ReadByte()
 
 	if err != nil {
-		return err
+		ss.s.logger.Println(err)
+		return
 	}
 
 	switch cmd {
@@ -212,35 +217,34 @@ func (ss *Session) Serve() error {
 		// read rsv
 		_, err := ss.ReadByte()
 		if err != nil {
-			return err
+			ss.s.logger.Println(err)
+			return
 		}
 
 		addr, rawaddr, err := ss.ReadAddrBytes()
 		if err != nil {
-			return err
+			ss.s.logger.Println(err)
+			return
 		}
 
-		log.Printf("proxy: %s", addr.String())
-
-		// Dial nextserver
-		//midconn, err := net.Dial("tcp", ss.s.cfg.Server)
-		midconn, err := guochan.Dial(ss.s.g, "tcp", ss.s.cfg.Server)
+		midconn, err := guochan.DialTimeout(ss.s.g, "tcp", ss.s.cfg.Server, 3*time.Second)
 
 		if err != nil {
-			return err
+			ss.s.logger.Println(err)
+			return
 		}
 		_, err = midconn.Write(rawaddr)
 		if err != nil {
-			return err
+			ss.s.logger.Println(err)
+			return
 		}
 
+		ss.s.logger.Printf("proxy: %s", addr.String())
 		Proxy(ss, midconn)
 
 	default:
-		return ErrCmdNotSupported
+		ss.s.logger.Println(ErrCmdNotSupported)
 	}
-
-	return nil
 
 }
 
@@ -309,6 +313,7 @@ func (ss *Session) ReadAddrBytes() (Addr, []byte, error) {
 		}
 		addr.IP = net.IP(b[:n-2])
 		addr.Port = int(b[n-2])<<8 | int(b[n-1])
+
 	case AddrTypeIPv6:
 		b := make([]byte, 18)
 		n, err := ss.Read(b)
@@ -318,24 +323,23 @@ func (ss *Session) ReadAddrBytes() (Addr, []byte, error) {
 		}
 		addr.IP = net.IP(b[:n-2])
 		addr.Port = int(b[n-2])<<8 | int(b[n-1])
+
 	case AddrTypeFQDN:
 		// read url length
 		urllen, err := ss.ReadByte()
-
 		bufaddr = append(bufaddr, urllen)
 		if err != nil {
 			return addr, bufaddr, err
 		}
 		b := make([]byte, urllen+2)
-
 		n, err := ss.Read(b)
-
 		bufaddr = append(bufaddr, b[:n]...)
 		if err != nil {
 			return addr, bufaddr, err
 		}
 		addr.Name = string(b[:n-2])
 		addr.Port = int(b[n-2])<<8 | int(b[n-1])
+
 	default:
 		return addr, bufaddr, ErrATYPNotSupported
 	}
@@ -349,8 +353,10 @@ func Proxy(l, r net.Conn) {
 
 	f := func(dst, src net.Conn) {
 		defer wg.Done()
-		io.Copy(dst, src)
-		dst.Close()
+		_, err := io.Copy(dst, src)
+		if err != nil {
+			dst.Close()
+		}
 	}
 
 	wg.Add(2)

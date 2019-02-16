@@ -6,6 +6,7 @@ import (
 	"crypto/md5"
 	"log"
 	"net"
+	"time"
 )
 
 // G国产器 is G
@@ -20,6 +21,10 @@ type listener struct {
 
 func (l *listener) Accept() (net.Conn, error) {
 	c, err := l.Listener.Accept()
+	if err != nil {
+		return nil, err
+	}
+
 	return l.G国产(c), err
 }
 
@@ -29,9 +34,13 @@ func Listen(g G国产器, network, address string) (net.Listener, error) {
 	return &listener{l, g}, err
 }
 
-// Dial is Dial
-func Dial(g G国产器, network, address string) (net.Conn, error) {
-	c, err := net.Dial(network, address)
+// DialTimeout is ...
+func DialTimeout(g G国产器, network, address string, timeout time.Duration) (net.Conn, error) {
+	c, err := net.DialTimeout(network, address, timeout)
+	if err != nil {
+		return nil, err
+	}
+
 	return g.G国产(c), err
 }
 

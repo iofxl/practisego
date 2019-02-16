@@ -11,26 +11,22 @@ type SServer struct {
 	Addr     string
 	Hostname string
 	cfg      Config
+	logger   *log.Logger
 }
 
 // Serve is Serve
-func (s *SServer) Serve(l net.Listener) error {
+func (s *SServer) Serve(l net.Listener) {
 
 	defer l.Close()
 
 	for {
 		c, err := l.Accept()
 		if err != nil {
-			return err
+			s.logger.Println(err)
+			return
 		}
 		ss := s.newSession(c)
-
-		go func() {
-			err := ss.Serve()
-			if err != nil {
-				log.Println(err)
-			}
-		}()
+		go ss.Serve()
 
 	}
 
@@ -49,13 +45,14 @@ func (s *SServer) ListenAndServe() error {
 	if err != nil {
 		return err
 	}
-	return s.Serve(l)
+	s.Serve(l)
+	return nil
 
 }
 
 // ListenAndServeSS is ...
-func ListenAndServeSS(addr string, cfg Config) error {
-	s := &SServer{Addr: addr, cfg: cfg}
+func ListenAndServeSS(addr string, cfg Config, logger *log.Logger) error {
+	s := &SServer{Addr: addr, cfg: cfg, logger: logger}
 	return s.ListenAndServe()
 }
 
@@ -73,28 +70,30 @@ func (s *SServer) newSession(conn net.Conn) *SSession {
 }
 
 // Serve is ...
-func (ss *SSession) Serve() error {
+func (ss *SSession) Serve() {
 	defer ss.Close()
-	// do some init work
-	//
+
 	addr, err := ss.ReadAddr()
 	if err != nil {
-		return err
+		ss.s.logger.Println(err)
+		return
 	}
 
-	log.Printf("proxy: %s\n", addr.String())
+	ss.s.logger.Printf("proxy: %s\n", addr.String())
 
 	dstconn, err := net.Dial("tcp", addr.String())
 	if err != nil {
-		return err
+		ss.s.logger.Println(err)
+		return
 	}
 	err = ss.SendReply(0x00)
 	if err != nil {
-		return err
+		ss.s.logger.Println(err)
+		return
 	}
 
 	Proxy(dstconn, ss)
-	return nil
+	return
 
 }
 
@@ -103,40 +102,6 @@ func (ss *SSession) ReadByte() (byte, error) {
 	b := make([]byte, 1, 1)
 	_, err := ss.Read(b)
 	return b[0], err
-}
-
-// Negotiate is Negotiate
-func (ss *SSession) Negotiate() error {
-
-	// read version
-	ver, err := ss.ReadByte()
-	if err != nil {
-		return err
-	}
-
-	if ver != Version5 {
-		return ErrVersion
-	}
-
-	// read nmethods
-	nmethods, err := ss.ReadByte()
-
-	if err != nil {
-		return err
-	}
-
-	methods := make([]byte, int(nmethods))
-
-	_, err = ss.Read(methods)
-
-	if err != nil {
-		return err
-	}
-
-	_, err = ss.Write([]byte{Version5, AuthMethodNotRequired})
-
-	return err
-
 }
 
 // ReadAddr is used for read dst addr

@@ -140,35 +140,3 @@ func (c *conn) initWriter() error {
 func (c *StreamConn) Write(p []byte) (int, error) {
 	return c.w.Write(p)
 }
-
-/*
-// Close is ...
-func (c *StreamConn) Close() error {
-	return c.c.Close()
-}
-
-// LocalAddr is ...
-func (c *StreamConn) LocalAddr() net.Addr {
-	return c.c.LocalAddr()
-}
-
-// RemoteAddr is ...
-func (c *StreamConn) RemoteAddr() net.Addr {
-	return c.c.RemoteAddr()
-}
-
-// SetDeadline is ...
-func (c *StreamConn) SetDeadline(t time.Time) error {
-	return c.c.SetDeadline(t)
-}
-
-// SetReadDeadline is ...
-func (c *StreamConn) SetReadDeadline(t time.Time) error {
-	return c.c.SetReadDeadline(t)
-}
-
-// SetWriteDeadline is ...
-func (c *StreamConn) SetWriteDeadline(t time.Time) error {
-	return c.c.SetWriteDeadline(t)
-}
-*/
