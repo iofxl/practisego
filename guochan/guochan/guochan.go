@@ -11,7 +11,7 @@ import (
 
 // G国产器 is G
 type G国产器 interface {
-	G国产(conn net.Conn) net.Conn
+	G国产(conn net.Conn) (net.Conn, error)
 }
 
 type listener struct {
@@ -25,7 +25,7 @@ func (l *listener) Accept() (net.Conn, error) {
 		return nil, err
 	}
 
-	return l.G国产(c), err
+	return l.G国产(c)
 }
 
 // Listen is Listen
@@ -41,7 +41,7 @@ func DialTimeout(g G国产器, network, address string, timeout time.Duration) (
 		return nil, err
 	}
 
-	return g.G国产(c), err
+	return g.G国产(c)
 }
 
 // Method is Method
@@ -92,6 +92,7 @@ func kdf(size int, secret []byte) []byte {
 }
 
 func (s *secret) newCipher() cipher.Block {
+
 	key := kdf(int(keySizes[s.m]), s.s)
 
 	blk, err := aes.NewCipher(key)
@@ -101,7 +102,7 @@ func (s *secret) newCipher() cipher.Block {
 	return blk
 }
 
-func (s *secret) G国产(c net.Conn) net.Conn {
+func (s *secret) G国产(c net.Conn) (net.Conn, error) {
 	// so the work MUST be done in NewStreamConn
 	return NewStreamConn(c, s.newCipher())
 }

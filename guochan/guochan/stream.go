@@ -2,7 +2,6 @@ package guochan
 
 import (
 	"crypto/cipher"
-	"log"
 	"net"
 )
 
@@ -79,14 +78,13 @@ func (c *conn) initReader() error {
 
 // NewStreamConn is ...
 // the way use initReader and initWriter in Reader and Writer is funny.
-func NewStreamConn(c net.Conn, blk cipher.Block) net.Conn {
+func NewStreamConn(c net.Conn, blk cipher.Block) (net.Conn, error) {
 	iv := make([]byte, blk.BlockSize())
 	ctr := cipher.NewCTR(blk, iv)
 
 	_, err := c.Write(iv)
 	if err != nil {
-		log.Println(err)
-		return c
+		return nil, err
 	}
 
 	stream := &StreamConn{
@@ -97,15 +95,14 @@ func NewStreamConn(c net.Conn, blk cipher.Block) net.Conn {
 	n, err := c.Read(iv)
 
 	if err != nil {
-		log.Println(err)
-		return c
+		return nil, err
 	}
 
 	ctr = cipher.NewCTR(blk, iv[:n])
 
 	stream.r = &cipher.StreamReader{S: ctr, R: c}
 
-	return stream
+	return stream, nil
 
 }
 
