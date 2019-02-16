@@ -354,6 +354,7 @@ func Proxy(l, r net.Conn) {
 	f := func(dst, src net.Conn) {
 		defer wg.Done()
 		io.Copy(dst, src)
+		// no matter err or not, close the conn
 		dst.Close()
 	}
 

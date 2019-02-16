@@ -23,7 +23,8 @@ func (s *SServer) Serve(l net.Listener) {
 		c, err := l.Accept()
 		if err != nil {
 			s.logger.Println(err)
-			return
+			// don't return here
+			continue
 		}
 		ss := s.newSession(c)
 		go ss.Serve()
