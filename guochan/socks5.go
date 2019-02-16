@@ -353,10 +353,8 @@ func Proxy(l, r net.Conn) {
 
 	f := func(dst, src net.Conn) {
 		defer wg.Done()
-		_, err := io.Copy(dst, src)
-		if err != nil {
-			dst.Close()
-		}
+		io.Copy(dst, src)
+		dst.Close()
 	}
 
 	wg.Add(2)
