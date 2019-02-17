@@ -22,7 +22,7 @@ func (s *SServer) Serve(l net.Listener) {
 	for {
 		c, err := l.Accept()
 		if err != nil {
-			s.logger.Println(err)
+			s.logger.Println(err, "continue")
 			// don't return here
 			continue
 		}
